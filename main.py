@@ -132,6 +132,16 @@ class LungMalignancyClassifier(pl.LightningModule):
         preds = self(x)
         loss = F.binary_cross_entropy(preds, y)
         self.log("test_loss", loss, on_step=True, on_epoch=True, sync_dist=True)
+
+        y_labels = torch.argmax(y, dim=-1)
+        preds_labels = torch.argmax(preds, dim=-1)
+        acc = (preds_labels == y_labels).sum() / len(y_labels)
+        sensitivity = (preds_labels & y_labels).sum() / (y_labels == 1).sum()
+        specificity = 1 - ((preds_labels & (y_labels == 0)).sum() / (y_labels == 0).sum())
+        self.log("test_accuracy", acc, on_step=True, on_epoch=True, sync_dist=True)
+        self.log("test_sensitivity", sensitivity, on_step=True, on_epoch=True, sync_dist=True)
+        self.log("test_specificity", specificity, on_step=True, on_epoch=True, sync_dist=True)
+
         return preds, y
         
     def test_epoch_end(self, outputs):
@@ -167,7 +177,7 @@ class LungMalignancyClassifier(pl.LightningModule):
             self.log("test_auc", roc_auc, rank_zero_only=True)
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=1e-3, weight_decay=0.0001)
+        optimizer = torch.optim.Adam(self.parameters(), lr=0.1, weight_decay=0.0001)
         lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.1, patience=10, threshold=0.0001)
         return {"optimizer": optimizer, "lr_scheduler": lr_scheduler, "monitor": "train_loss"}
 
@@ -184,7 +194,7 @@ class LIDCDataModule(pl.LightningDataModule):
         self.metadatas_path = self.path / "metadatas.pickle"
 
     def prepare_data(self):
-        if not self.imgs_path.exists() and self.labels_path.exists() and self.metadatas_path.exists():
+        if not self.imgs_path.exists() or not self.labels_path.exists() or not self.metadatas_path.exists():
             print("Loading data...")
             # preprocess everything and save all to disk
             dataset = LIDCIDRIDataset(path=self.path)
@@ -194,8 +204,8 @@ class LIDCDataModule(pl.LightningDataModule):
             ref_img = sitk.Resample(ref_img, translate)
 
             dataset.transform = Compose([
-                    Register(ref_img),
-                    #RegisterUsingLungSegmentation(ref_img), # slow, but more accurate
+                    #Register(ref_img),
+                    RegisterUsingLungSegmentation(ref_img), # slow, but more accurate
                     ResampleIsotropic(),
                     SITKImageToTensor(),
                     CropOrPad(target_shape=(256, 256, 256))  # Crop the center 256x256x256 voxels
@@ -223,7 +233,7 @@ class LIDCDataModule(pl.LightningDataModule):
         with open(self.metadatas_path, 'rb') as f:
             self.metadatas = pickle.load(f)
 
-        if self.trainer.is_global_zero:
+        if stage == 'fit' and self.trainer.is_global_zero:
             print("Filtering and preprocessing labels...")
         # remove samples with label 0 (unknown)
         mask = self.labels != 0
@@ -241,7 +251,7 @@ class LIDCDataModule(pl.LightningDataModule):
 
         train_val, self.test = train_test_split(self.data, train_size=0.8)
         self.train, self.val = train_test_split(train_val, train_size=0.8)
-        if self.trainer.is_global_zero:
+        if stage == 'fit' and self.trainer.is_global_zero:
             print("Total no. of samples: ", len(self.data))
             print("Train samples:", len(self.train))
             print("Validation samples:", len(self.val))
@@ -260,20 +270,24 @@ if __name__=="__main__":
     parser = ArgumentParser()
     parser.add_argument("--lidc-idri-dir", type=str, default="LIDC-IDRI")
     parser.add_argument("--batch-size", type=int, default=5)
+    parser.add_argument("--model", type=str, default="LungCNN2")
     parser = pl.Trainer.add_argparse_args(parser)
-    parser.add_argument("--max-epochs", type=int, default=500000)
+    parser.add_argument("--max-epochs", type=int, default=1000)
     parser.add_argument("--num-workers", type=int, default=4)
     args = parser.parse_args()
 
     datamodule = LIDCDataModule(path=args.lidc_idri_dir, batch_size=args.batch_size, num_workers=args.num_workers)
-    classifier = LungMalignancyClassifier(model="LungCNN2")
+    classifier = LungMalignancyClassifier(model=args.model)
     tb_logger = pl.loggers.TensorBoardLogger("logs/")
     
     trainer = pl.Trainer.from_argparse_args(args,
-                                            #callbacks=[EarlyStopping(monitor="val_loss", patience=10)],
+                                            callbacks=[EarlyStopping(monitor="val_loss", patience=100)],
                                             log_every_n_steps=4,
                                             logger=tb_logger) # num_processes=X, gpus=Y, ...
                          
     trainer.fit(classifier, datamodule)
 
+    print("> Validating")
+    trainer.validate(classifier, datamodule)
+    print("> Computing final accuracy metrics over test set")
     trainer.test(classifier, datamodule)

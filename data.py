@@ -201,7 +201,7 @@ def segment_lungs(img):
     labels_sorted = labels[largest_sizes_idx]
 
     lungs = ws == labels_sorted[0]
-    if sizes[labels_sorted[1]] > sizes[labels_sorted[0]]/32:
+    if len(labels_sorted) > 1 and sizes[labels_sorted[1]] > sizes[labels_sorted[0]]/32:
         print("Combining largest segment with 2nd largest segment")
         lungs |= ws == labels_sorted[1]
 
