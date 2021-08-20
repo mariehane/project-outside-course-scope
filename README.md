@@ -1,5 +1,5 @@
 # POC: Lung CT Diagnosis via. Deep Learning
-Code for my Project Outside Course-scope (POC) on Deep Learning for Patients with 
+Code for my Project Outside Course-scope (POC) on Deep Learning for Chest Image Analysis for Patients with Lung Cancer.
 
 ## Setup
 The code has been developed for Python 3.6.9 and CUDA version 11.2. It has been tested on Linux, but should work on any platform that can install the libraries.
