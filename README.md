@@ -35,12 +35,12 @@ pip install -r requirements.txt
 ## Running the code
 The results in the report were generated with the following three commands:
 ```
-python main.py --model LungCNN --gpus 1 --batch-size 5 --data-split-seed 42
+python main.py --model LungCNN --lidc-idri-dir LIDC-IDRI --gpus 1 --batch-size 5 --data-split-seed 42
 ```
 ```
-python main.py --model LungCNN2 --gpus 1 --batch-size 5 --data-split-seed 42
+python main.py --model LungCNN2 --lidc-idri-dir LIDC-IDRI --gpus 1 --batch-size 5 --data-split-seed 42
 ```
 ```
-python main.py --model SlowR50 --gpus 5 --accelerator ddp --batch-size 1 --data-split-seed 42
+python main.py --model SlowR50 --lidc-idri-dir LIDC-IDRI --gpus 5 --accelerator ddp --batch-size 1 --data-split-seed 42
 ```
 Note that the last command requires access to five GPUs with around 48GB memory each.
