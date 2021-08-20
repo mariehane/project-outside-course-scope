@@ -95,10 +95,33 @@ class LungCNN2(nn.Module):
         out = self.dense(out)     # -> num_classes (2)
         return out
 
+# A model based on the slow_r50 ResNet model trained on the Kinetics400 dataset
+class SlowR50(nn.Module):
+    def __init__(self, num_classes=2):
+        super().__init__()
+        self.num_classes = num_classes
+        self.slow_r50 = torch.hub.load('facebookresearch/pytorchvideo', 'slow_r50', pretrained=True)
+        self.dense = nn.Sequential(
+            nn.Linear(in_features=400, out_features=64),
+            nn.ReLU(),
+            nn.Linear(in_features=64, out_features=num_classes),
+            nn.Softmax(dim=-1)
+        )
+
+    def forward(self, x):         # inputs: 256x256x256
+        #x = x.unsqueeze_(1)       # add color-channel feature, and convert to RGB
+        x = torch.cat([x,x,x], dim=1) 
+        out = self.slow_r50(x)    # -> 400
+        out = self.dense(out)     # -> num_classes (2)
+        return out
+
+
 class LungMalignancyClassifier(pl.LightningModule):
     def __init__(self, model="LungCNN"):
         super().__init__()
-        if model == "LungCNN":
+        if model == "SlowR50":
+            self.model = SlowR50(num_classes=2)
+        elif model == "LungCNN":
             self.model = LungCNN(num_classes=2)
         else:
             assert model == "LungCNN2", "Unknown model specified!"
@@ -146,11 +169,16 @@ class LungMalignancyClassifier(pl.LightningModule):
         
     def test_epoch_end(self, outputs):
         outs = self.all_gather(outputs)
-        print("outs:",outs)
-        preds = outs[0][0].squeeze(0)
-        y = outs[0][1].squeeze(0)
-
         if self.trainer.is_global_zero:
+            print("outs:",outs)
+            print("len outs:",len(outs))
+            #print("outs[0].shape:",outs[0].shape)
+            #print("outs[1].shape:",outs[1].shape)
+            preds = [out[0] for out in outs]
+            preds = torch.cat(preds, dim=0).view(-1, 2)
+            y = [out[1] for out in outs]
+            y = torch.cat(y, dim=0).view(-1, 2)
+
             y = y.cpu()
             preds = preds.cpu()
             print("Preds:", preds)
@@ -183,11 +211,12 @@ class LungMalignancyClassifier(pl.LightningModule):
 
 
 class LIDCDataModule(pl.LightningDataModule):
-    def __init__(self, path, batch_size=64, num_workers=1):
+    def __init__(self, path, batch_size=64, num_workers=1, data_split_seed=None):
         super().__init__()
         self.path = Path(path)
         self.batch_size = batch_size
         self.num_workers = num_workers
+        self.data_split_seed = data_split_seed
 
         self.imgs_path = self.path / "imgs.pt"
         self.labels_path = self.path / "labels.pt"
@@ -249,8 +278,8 @@ class LIDCDataModule(pl.LightningDataModule):
 
         self.data = list(zip(self.imgs, self.labels, self.metadatas))
 
-        train_val, self.test = train_test_split(self.data, train_size=0.8)
-        self.train, self.val = train_test_split(train_val, train_size=0.8)
+        train_val, self.test = train_test_split(self.data, train_size=0.8, random_state=self.data_split_seed)
+        self.train, self.val = train_test_split(train_val, train_size=0.8, random_state=self.data_split_seed)
         if stage == 'fit' and self.trainer.is_global_zero:
             print("Total no. of samples: ", len(self.data))
             print("Train samples:", len(self.train))
@@ -264,19 +293,20 @@ class LIDCDataModule(pl.LightningDataModule):
         return DataLoader(self.val, batch_size=self.batch_size, num_workers=self.num_workers)
 
     def test_dataloader(self):
-        return DataLoader(self.test, batch_size=len(self.test), num_workers=self.num_workers)
+        return DataLoader(self.test, batch_size=self.batch_size, num_workers=self.num_workers)
 
 if __name__=="__main__":
     parser = ArgumentParser()
     parser.add_argument("--lidc-idri-dir", type=str, default="LIDC-IDRI")
     parser.add_argument("--batch-size", type=int, default=5)
     parser.add_argument("--model", type=str, default="LungCNN2")
+    parser.add_argument("--data-split-seed", type=int, default=None)
     parser = pl.Trainer.add_argparse_args(parser)
     parser.add_argument("--max-epochs", type=int, default=1000)
     parser.add_argument("--num-workers", type=int, default=4)
     args = parser.parse_args()
 
-    datamodule = LIDCDataModule(path=args.lidc_idri_dir, batch_size=args.batch_size, num_workers=args.num_workers)
+    datamodule = LIDCDataModule(path=args.lidc_idri_dir, batch_size=args.batch_size, num_workers=args.num_workers, data_split_seed=args.data_split_seed)
     classifier = LungMalignancyClassifier(model=args.model)
     tb_logger = pl.loggers.TensorBoardLogger("logs/")
     
