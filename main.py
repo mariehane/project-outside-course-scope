@@ -8,8 +8,6 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 
 import SimpleITK as sitk
-os.environ["PATH"] = "/opt/homebrew/Caskroom/slicer/4.11.20210226,1442768/Slicer.app/Contents/MacOS:" + os.environ["PATH"]
-os.environ["SITK_SHOW_COMMAND"] = "Slicer"
 
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import roc_auc_score, roc_curve, RocCurveDisplay
