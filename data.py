@@ -15,7 +15,7 @@ class LIDCIDRIDataset(torch.utils.data.IterableDataset):
         ...     SITKImageToTensor()
         ... ])
         >>> dataset = LIDCIDRIDataset(path="LIDC-IDRI", transform=transform)
-        >>> img, label = next(dataset)
+        >>> img, label, metadata = next(dataset)
         >>> print("Label:", label)
         >>> print(img)
     """
@@ -196,7 +196,6 @@ def segment_lungs(img):
     largest_sizes_idx = np.argsort(list(sizes.values()))[::-1]
 
     # if 2nd largest segment is less than 1/32 the size of the largest then ignore, otherwise combine them
-    # TODO: determine if this any lung cts will have two segments that are joined with this procedure
     labels = np.array(list(sizes.keys()))
     labels_sorted = labels[largest_sizes_idx]
 
@@ -253,11 +252,8 @@ class SITKImageToTensor(torch.nn.Module):
             tensor.unsqueeze_(dim=0)
         return tensor
 
-# TODO: LUNA16 Dataset
-# TODO: NLTC Dataset?
-
 if __name__=="__main__":
-    dataset = LIDCIDRIDataset(path="/Users/mariehane/Desktop/LIDC-IDRI")
+    dataset = LIDCIDRIDataset(path="LIDC-IDRI")
 
     # add registration of the lungs to a reference image before resampling
     # to isotropic spacing and turning the image into a tensor
