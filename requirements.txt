@@ -9,3 +9,4 @@ torch==1.9.0+cu111
 torchvision==0.10.0+cu111
 torchio==0.18.47
 pytorch-lightning==1.4.2
+xlrd==2.0.1
