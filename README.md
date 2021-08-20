@@ -1,4 +1,4 @@
-# POC: Lung CT Diagnosis via. Deep Learning
+# POC: Lung CT Diagnosis via Deep Learning
 Code for my Project Outside Course-scope (POC) on Deep Learning for Chest Image Analysis for Patients with Lung Cancer.
 
 ## Setup
